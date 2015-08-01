@@ -28,8 +28,8 @@ do
   function rom.inits() return ipairs(rom.invoke("list", "boot")) end
   function rom.isDirectory(path) return rom.invoke("isDirectory", path) end
 
-  local screen = component.list('screen', true)()
-  for address in component.list('screen', true) do
+  local screen = component.list('screen')()
+  for address in component.list('screen') do
     if #component.invoke(address, 'getKeyboards') > 0 then
       screen = address
     end
@@ -163,4 +163,31 @@ do
   require("term").clear()
   os.sleep(0.1) -- Allow init processing.
   runlevel = 1
+end
+
+local function motd()
+  local f = io.open("/etc/motd")
+  if not f then
+    return
+  end
+  if f:read(2) == "#!" then
+    f:close()
+    os.execute("/etc/motd")
+  else
+    f:seek("set", 0)
+    io.write(f:read("*a") .. "\n")
+    f:close()
+  end
+end
+
+while true do
+  motd()
+  local result, reason = os.execute(os.getenv("SHELL"))
+  if not result then
+    io.stderr:write((tostring(reason) or "unknown error") .. "\n")
+    io.write("Press any key to continue.\n")
+    os.sleep(0.5)
+    require("event").pull("key")
+  end
+  require("term").clear()
 end

@@ -1,5 +1,4 @@
 JSON = JSON[0]
-
 local function checkArg(n, have, ...)
   have = type(have)
   local function check(want, ...)
@@ -22,6 +21,14 @@ local function log(...)
 	js.global:log(...)
 end
 
+local function wrapNativeLib(lib)
+	return setmetatable({}, {__index = function(t, method)
+		return function( ... )
+			return lib[method](lib, ...)
+		end
+	end})
+end
+
 local function fromNativeObject(serialised)
 	local t = {}
 	for i = 0, #serialised-1,2 do
@@ -34,7 +41,7 @@ end
 local function wrapFunction(func, fn)
 	--log("Wrap>", fn)
 	return function(...)
-		--log("Call> ", fn)
+		log("Call> ", fn)
 		return func(...)
 	end
 end
@@ -55,6 +62,8 @@ local function wrapTable(tab, ignore)
 	return newtab
 end
 
+
+local unicode = wrapNativeLib(unicode)
 
 local sandbox
 
@@ -82,9 +91,10 @@ local wrappers = {
 	load = function(ld, source, mode, env)
 		return load(ld, source, mode, env or sandbox)
 	end,
+	unicode = unicode,
 	component = { --Low level components
 		invoke = function(c,m,...)
-			log("CINVOKE["..c.."]"..m)
+			--log("CINVOKE["..c.."]"..m)
 			local res = component:invoke(c,m,...)
 			if not res then return end
 			return JSON:decode(res)
@@ -138,14 +148,14 @@ sandbox = setmetatable(wrappers,{__index = function(t,i)
 		return sandbox
 	elseif type(_G[i]) == "function" then
 		----
-		return _G[i]
+		--return _G[i]
 		----
-		--[[return function(...)
+		return function(...)
 			log("Call[g]>",i)
 			--log(debug.traceback())
 			--log("")
 			return _G[i](...)
-		end]]
+		end
 	elseif type(_G[i]) == "table" and i ~= "table" then
 		return wrapTable(_G[i])
 	end

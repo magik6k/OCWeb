@@ -225,8 +225,6 @@ var romFiles = [
 "lib/colors.lua",
 "init.lua",
 "boot/04_component.lua",
-"boot/02_io.lua",
-"boot/01_os.lua",
 "boot/90_filesystem.lua",
 "boot/03_io.lua",
 "boot/00_base.lua",
@@ -237,7 +235,6 @@ var romFiles = [
 "boot/93_term.lua",
 "boot/01_process.lua",
 "boot/92_keyboard.lua",
-"boot/03_component.lua",
 ".osprop",
 "etc/rc.cfg",
 "etc/motd",
@@ -385,7 +382,7 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 	}
 	
 	function write(property, obj){
-		console.log("["+fsid+"]Write: "+property);
+		//console.log("["+fsid+"]Write: "+property);
 		localStorage.setItem(property, JSON.stringify(obj));
 	}
 	
@@ -406,13 +403,13 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 	}
 	
 	function __putToDirectory(fileNode, fileType, directoryNode){
-		console.log("put "+fileNode+" to "+directoryNode);
+		//console.log("put "+fileNode+" to "+directoryNode);
 		var dir = read(fsid + "/" + directoryNode);
 		if(dir.type != 1)return false;//not a directory
 		if(directoryNode != fileNode.substr(0, directoryNode.length))return false;//wrong file node
 		dir.files[fileNode.substr(directoryNode.length+1)] = fileType;
 		write(fsid + "/" + directoryNode, dir);
-		console.log("put ok")
+		//console.log("put ok")
 		return true;
 	}
 	
@@ -456,7 +453,7 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 	function downloadRom() {
 		state("Downloading ROM");
 		romDirectories.forEach(function(d) {
-			console.log("> mkdir "+d)
+			//console.log("> mkdir "+d)
 			__makeDirectory(parrent("root/"+d), "root/"+d)
 		});
 
@@ -474,7 +471,7 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 		res = fsid + "/root" + res;
 		if(res.substr(res.length-1,res.length) == "/")
 			res = res.substr(0, res.length-1);
-		console.log("["+fsid+"]Node: "+res)
+		//console.log("["+fsid+"]Node: "+res)
 		return res;
 	}	
 	
@@ -491,13 +488,13 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 			if(handles[firstFree] == undefined) {
 				handles[firstFree] = handle;
 				firstFree++;
-				return retLua(firstFree-1);
+				return firstFree-1;
 			}else{
 				var nextFree = handles[firstFree].next;
 				handles[firstFree] = handle;
 				var hid = firstFree;
 				firstFree = nextFree;
-				return retLua(hid);
+				return hid;
 			}
 		} 
 	}
@@ -519,7 +516,7 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 	
 	this.exists = function(file) {
 		var node = file2node(file);
-		console.log(retLua(read(node) != undefined))
+		//console.log(retLua(read(node) != undefined))
 		return retLua(read(node) != undefined);
 	}
 
@@ -580,7 +577,7 @@ computer.shutdown = function(){throw retLua("TurnOff");}
 computer.beep = function(){console.log("BEEEEEEEEEEEEP!")}
 
 function loadComputer(){
-	L.createtable( 0, 12);
+	L.createtable(0, 12);
 
 	L.pushjs(computer.getBootAddress);
     L.setfield( -2, "getBootAddress"); 
@@ -625,7 +622,7 @@ function loadComputer(){
 
 var component = {};
 component.invoke = function(addr, method,a1,a2,a3,a4,a5,a6){
-	console.log("componentCall:"+addr+"/"+method);
+	//console.log("componentCall:"+addr+"/"+method);
 	try{
 		var d = components[addr][method](a1,a2,a3,a4,a5,a6);
 		//if(typeof d == "object") {
@@ -636,7 +633,7 @@ component.invoke = function(addr, method,a1,a2,a3,a4,a5,a6){
 	}catch(e){console.log(e);return retLua(false,"no component("+addr+") or function");}
 }
 
-component.list = function(){
+component.list = function() {
 	var tab = {};
 	for (var key in components) {
 		if (components.hasOwnProperty(key)) {
@@ -647,8 +644,8 @@ component.list = function(){
 }
 
 
-function loadComponent(){
-	L.createtable( 0, 4);
+function loadComponent() {
+	L.createtable(0, 4);
 
     L.pushjs(component.invoke);
     L.setfield( -2, "invoke");  
@@ -665,8 +662,8 @@ function loadComponent(){
 	L.setglobal("component");
 }
 
-function loadNative(){
-	L.createtable( 0, 1);
+function loadNative() {
+	L.createtable(0, 1);
 
 	L.pushjs(function(selector, data){$(selector).html(data);});
     L.setfield( -2, "jqset");
@@ -674,9 +671,33 @@ function loadNative(){
 	L.setglobal("native");
 }
 
+function loadUnicode() {
+	L.createtable(0, 5);
+
+	L.pushjs(function(n1, n2, n3, n4, n5){return String.fromCharCode(n1, n2, n3, n4, n5)});
+    L.setfield( -2, "char");
+
+    L.pushjs(function(s){if(s!=undefined)return s.length});
+    L.setfield( -2, "len");
+
+    L.pushjs(function(s){if(s!=undefined)return s.toLowerCase()});
+    L.setfield( -2, "lower");
+
+    L.pushjs(function(s){if(s!=undefined)return s.toUpperCase()});
+    L.setfield( -2, "upper");
+
+    L.pushjs(function(s,b,e){
+    	if(e == undefined) e = Infinity;
+    	return s.substr(b-1, e - b + 1);
+    });
+    L.setfield( -2, "sub");
+
+    L.setglobal("unicode");
+}
+
 var bios;
 
-$(function(){
+$(function() {
 	state("Lua init");
 	L.openlibs();
 	
@@ -687,6 +708,7 @@ $(function(){
 	loadComponent();
 	loadComputer();
 	loadNative();
+	loadUnicode();
 	
 	initInternet();
 	
