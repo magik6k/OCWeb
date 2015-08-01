@@ -1,3 +1,21 @@
+local function checkArg(n, have, ...)
+  have = type(have)
+  local function check(want, ...)
+    if not want then
+      return false
+    else
+      return have == want or check(...)
+    end
+  end
+  if not check(...) then
+    local msg = string.format("bad argument #%d (%s expected, got %s)",
+                              n, table.concat({...}, " or "), have)
+    error(msg, 3)
+  end
+end
+
+-------------------------------------------------------------------------------
+
 local function log(...)
 	js.global:log(...)
 end
@@ -39,6 +57,7 @@ end
 local sandbox
 
 local wrappers = {
+	checkArg = checkArg,
 	error = function(...)
 		log("REPORTEDERROR:",...)
 		log(debug.traceback())
@@ -100,32 +119,39 @@ local wrappers = {
 	}
 }
 
-function runKernel(kernelUrl)
-	component:invoke("webgpu","set",1,3,"Downloading eeprom "..kernelUrl)
-	local kernelCode = component:invoke("webinternet", "request", kernelUrl)
-
-	sandbox = setmetatable(wrappers,{__index = function(t,i)
-		log("_get", i, type(_G[i]))
-		
-		if i == "_G" then
-			return sandbox
-		elseif type(_G[i]) == "function" then
-			----
-			return _G[i]
-			----
-			--[[return function(...)
-				log("Call[g]>",i)
-				--log(debug.traceback())
-				--log("")
-				return _G[i](...)
-			end]]
-		elseif type(_G[i]) == "table" and i ~= "table" then
-			return wrapTable(_G[i])
-		end
+sandbox = setmetatable(wrappers,{__index = function(t,i)
+	log("_get", i, type(_G[i]))
+	
+	if i == "_G" then
+		return sandbox
+	elseif type(_G[i]) == "function" then
+		----
 		return _G[i]
-	end})
+		----
+		--[[return function(...)
+			log("Call[g]>",i)
+			--log(debug.traceback())
+			--log("")
+			return _G[i](...)
+		end]]
+	elseif type(_G[i]) == "table" and i ~= "table" then
+		return wrapTable(_G[i])
+	end
+	return _G[i]
+end})
 
-	local kfun,e = load(kernelCode, "=KERNEL", nil, sandbox)
+function runStage(stageUrl)
+	--component:invoke("webgpu","set",1,3,"Downloading stage "..stageUrl)
+	local kernelCode = component:invoke("webinternet", "request", stageUrl)
+
+	local kfun,e = load(kernelCode, "="..stageUrl, nil, sandbox)
+
+	if not kfun then
+		log("-------------------------------------------------------------------")
+		log("STAGE LOADING FAILED:")
+		log(e)
+		log("-------------------------------------------------------------------")
+	end
 
 	local kcoro = coroutine.create(function()
 		local status, err = xpcall(kfun, function(err) 
@@ -133,21 +159,24 @@ function runKernel(kernelUrl)
 			log(debug.traceback())
 			return err
 		end)
-		log("KERNEL QUIT WITH STATUS: ", status, ";E:", type(err))
+		log("STAGE QUIT WITH STATUS: ", status, ";E:", type(err))
 	end)
 
-	--component:invoke("webgpu", "set", 1,4,"Booting kernel "..kernelUrl)
-	log("STARTING KERNEL-------------> "..kernelUrl)
+	--component:invoke("webgpu", "set", 1,4,"Booting stage "..stageUrl)
+	log("STARTING STAGE-------------> " .. stageUrl)
 
 	for i=0,10 do
 		local data = {coroutine.resume(kcoro)}
-		log("Resume kernel, yield data:", table.unpack(data))
-		log("kernel thread status: ", coroutine.status(kcoro))
+		log("Resumed stage, yield data:", table.unpack(data))
+		log("stage thread status: ", coroutine.status(kcoro))
 		if coroutine.status(kcoro) == "dead" then
-			log("Kernel "..kernelUrl.." has quit")
+			log("Stage "..stageUrl.." has quit")
 			break
 		end	
 	end
 end
 
-runKernel("vm/eeprom.lua")
+runStage("vm/component.lua")
+runStage("vm/gpu.lua")
+
+runStage("vm/eeprom.lua")

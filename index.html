@@ -6,8 +6,7 @@
 		<meta charset="utf-8">
 		<style>
 		p { margin:0 }
-			body
-			{
+			body {
 				background-color: rgb(35, 35, 35);
 				color: rgb(165, 180, 180);
 				font-family: Arial, Helvetica, sans-serif;
@@ -19,13 +18,21 @@
 				text-decoration: none;
 				outline: none;
 			}
+
 			a:hover {
 				color: rgb(120,120,120);
 			}
-			#top
-			{
+
+			#top {
 				width: 100%;
 				height:100%;
+			}
+
+			#term {
+				background: #0f0f0f;
+				font-family:"Courier New", Courier, monospace;
+				font-size: 15px;
+				width: 721px;
 			}
 		</style>
 		<title>Virtual OpenComputers</title>
@@ -34,6 +41,9 @@
 var components = {};
 //Utils
 
+function state(s) {
+	$("#state").text(s);
+}
 
 
 function retLua(a1,a2,a3,a4,a5,a6,a7,a8)
@@ -99,10 +109,10 @@ function initGPU()
 {
 	var lines = [];
 	for(var i = 0;i<24;++i) {
-		$("#term").append("<div id='terml"+i+"'>l </div>");
+		$("#term").append("<span id='terml"+i+"'></span><br/>");
 		lines[i] = "";
 	}
-	
+	/*
 	var cbg = 0x0;
 	
 	
@@ -131,7 +141,7 @@ function initGPU()
 
 	components["webgpu"].set = function(x, y, value, vertical) {
 		lines[y-1] = value;
-		$("#terml"+(y-1)).html("l "+value);
+		$("#terml"+(y-1)).html(value);
 		console.log("#terml"+(y-1));
 		return true;
 	}
@@ -142,12 +152,12 @@ function initGPU()
 		console.log(w)
 		for(var i = 0;i<h;++i) {
 			lines[y+i-1] = char.repeat(w);
-			$("#terml"+(y+i-1)).html("l "+char.repeat(w));
+			$("#terml"+(y+i-1)).html(char.repeat(w));
 			console.log("#terml"+(y+i-1));
 		}
 		return true;
 	}
-	
+	*/
 }
 
 //Internet
@@ -187,10 +197,131 @@ function initInternet()
 //==============================================FILESYSTEM==============================================
 
 var romDirectories = [
+"lib",
+"boot",
+"etc",
+"etc/rc.d",
+"usr",
+"usr/misc",
+"usr/man",
+"bin",
 ];
 
 var romFiles = [
-"init.lua"
+"lib/buffer.lua",
+"lib/shell.lua",
+"lib/note.lua",
+"lib/io.lua",
+"lib/serialization.lua",
+"lib/keyboard.lua",
+"lib/process.lua",
+"lib/sides.lua",
+"lib/text.lua",
+"lib/package.lua",
+"lib/filesystem.lua",
+"lib/rc.lua",
+"lib/term.lua",
+"lib/event.lua",
+"lib/colors.lua",
+"init.lua",
+"boot/04_component.lua",
+"boot/02_io.lua",
+"boot/01_os.lua",
+"boot/90_filesystem.lua",
+"boot/03_io.lua",
+"boot/00_base.lua",
+"boot/91_gpu.lua",
+"boot/99_rc.lua",
+"boot/94_shell.lua",
+"boot/02_os.lua",
+"boot/93_term.lua",
+"boot/01_process.lua",
+"boot/92_keyboard.lua",
+"boot/03_component.lua",
+".osprop",
+"etc/rc.cfg",
+"etc/motd",
+"etc/rc.d/example.lua",
+"usr/misc/greetings.txt",
+"usr/man/echo",
+"usr/man/mount",
+"usr/man/address",
+"usr/man/resolution",
+"usr/man/yes",
+"usr/man/edit",
+"usr/man/pwd",
+"usr/man/clear",
+"usr/man/cp",
+"usr/man/ls",
+"usr/man/uptime",
+"usr/man/mv",
+"usr/man/redstone",
+"usr/man/lua",
+"usr/man/more",
+"usr/man/unalias",
+"usr/man/mkdir",
+"usr/man/cd",
+"usr/man/rc",
+"usr/man/userdel",
+"usr/man/sh",
+"usr/man/primary",
+"usr/man/date",
+"usr/man/shutdown",
+"usr/man/rm",
+"usr/man/dmesg",
+"usr/man/df",
+"usr/man/hostname",
+"usr/man/label",
+"usr/man/useradd",
+"usr/man/man",
+"usr/man/umount",
+"usr/man/which",
+"usr/man/reboot",
+"usr/man/cat",
+"usr/man/ln",
+"usr/man/alias",
+"bin/address.lua",
+"bin/mount.lua",
+"bin/userdel.lua",
+"bin/cp.lua",
+"bin/dmesg.lua",
+"bin/uptime.lua",
+"bin/unalias.lua",
+"bin/edit.lua",
+"bin/df.lua",
+"bin/lua.lua",
+"bin/reboot.lua",
+"bin/useradd.lua",
+"bin/redstone.lua",
+"bin/rm.lua",
+"bin/shutdown.lua",
+"bin/mv.lua",
+"bin/label.lua",
+"bin/flash.lua",
+"bin/ln.lua",
+"bin/unset.lua",
+"bin/clear.lua",
+"bin/resolution.lua",
+"bin/cd.lua",
+"bin/install.lua",
+"bin/cat.lua",
+"bin/primary.lua",
+"bin/date.lua",
+"bin/components.lua",
+"bin/rc.lua",
+"bin/more.lua",
+"bin/alias.lua",
+"bin/sh.lua",
+"bin/set.lua",
+"bin/yes.lua",
+"bin/man.lua",
+"bin/which.lua",
+"bin/umount.lua",
+"bin/echo.lua",
+"bin/pwd.lua",
+"bin/ls.lua",
+"bin/mkdir.lua",
+"bin/hostname.lua",
 ];
 
 var fsVersion = 0;
@@ -313,8 +444,10 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 	
 	function downloadRom(){
 		console.log("Downloading ROM");
+		state("Downloading ROM");
 		romFiles.forEach(function(f){
 			__writefile("root", "root/"+f, dl("rom/"+f));
+			state("Downloading ROM(GET " + ("rom/"+f) + ")");
 		});
 		
 	}
@@ -361,9 +494,9 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 	
 	this.read = function(handle, count){
 		var readed = handles[handle].node.data.substr(handles[handle].position,count);
-		console.log("FSREAD: " + readed);
+		//console.log("FSREAD: " + readed);
 		if (readed != "" || handles[handle].position == 0) {
-			console.log("FSREAD RET!");
+			//console.log("FSREAD RET!");
 			handles[handle].position += count;
 			return readed;
 		}
@@ -493,30 +626,47 @@ function loadComponent(){
 
     L.pushstring( "row->custom");
     L.setfield( -2, "custom");
+
 	L.setglobal("component");
 }
+
+function loadNative(){
+	L.createtable( 0, 1);
+
+	L.pushjs(function(selector, data){$(selector).html(data);});
+    L.setfield( -2, "jqset");
+
+	L.setglobal("native");
+}
+
 var bios;
 
 $(function(){
+	state("Lua init");
 	L.openlibs();
 	
+	state("Machine init");
 	initScreen();
 	initGPU();
 	
 	loadComponent();
 	loadComputer();
+	loadNative();
 	
 	initInternet();
 	
-	components["webgpu"].set(1,1,"Downloading bios");
+	//components["webgpu"].set(1,1,"Downloading bios");
+	state("Downloading BIOS code");
 	bios = dl("vm/bios.lua");
-	components["webgpu"].set(1,2,"Booting vm");
+	//components["webgpu"].set(1,2,"Booting vm");
 	//console.log(bios);
+	state("Start / Running");
 	console.log(L.execute(bios));
 });
 </script>
 	</head>
 	<body>
 		<div id = "term"></div>
+		<p>STATE: <b><span id = "state">Not initialized</span></b></p>
 	</body>
 </html>
