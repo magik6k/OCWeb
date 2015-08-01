@@ -393,13 +393,26 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 		write(fsid, {version: fsVersion});
 		write(fsid + "/root", {type: 1, files: {}});
 	}
+
+	function parrent(node) {
+		var spl = node.split("/");
+		spl.pop()
+		return spl.join("/")
+	}
+
+	function name(node) {
+		var spl = node.split("/");
+		return spl.pop()
+	}
 	
 	function __putToDirectory(fileNode, fileType, directoryNode){
+		console.log("put "+fileNode+" to "+directoryNode);
 		var dir = read(fsid + "/" + directoryNode);
 		if(dir.type != 1)return false;//not a directory
 		if(directoryNode != fileNode.substr(0, directoryNode.length))return false;//wrong file node
 		dir.files[fileNode.substr(directoryNode.length+1)] = fileType;
 		write(fsid + "/" + directoryNode, dir);
+		console.log("put ok")
 		return true;
 	}
 	
@@ -417,42 +430,44 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 	
 	function __makeDirectory(parrentNode, directoryNode){
 		var thatFile = read(fsid + "/" + directoryNode);
-		if(thatFile != undefined&&thatFile.type != 1 && __putToDirectory(directoryNode, 1, parrentNode)){
-			var file = {type: 1, files: {}};
+		if(thatFile == undefined && __putToDirectory(directoryNode, 1, parrentNode)){
+			var dir = {type: 1, files: {}};
 			write(fsid + "/" + directoryNode, dir);
 		}	
 	}
 	
 	function openFilesystem(){
 		fsProperties = read(fsid);
-		if(fsProperties == undefined)
-		{
+		if(fsProperties == undefined) {
 			console.log("["+fsid+"] Do not exist, creating");
 			createFilesystem()
 			fsProperties = read(fsid);
 			fresh = true;
 		}
-		if(fsProperties.version != fsVersion)
-		{
+		if(fsProperties.version != fsVersion) {
 			console.log("["+fsid+"] Is outdated("+fsProperties.version+"->"+fsVersion+"), recreating");
 			localStorage.clear();
 			createFilesystem()
 			fsProperties = read(fsid);
 			fresh = true;
-		}		
+		}
 	}
 	
-	function downloadRom(){
-		console.log("Downloading ROM");
+	function downloadRom() {
 		state("Downloading ROM");
-		romFiles.forEach(function(f){
-			__writefile("root", "root/"+f, dl("rom/"+f));
+		romDirectories.forEach(function(d) {
+			console.log("> mkdir "+d)
+			__makeDirectory(parrent("root/"+d), "root/"+d)
+		});
+
+		romFiles.forEach(function(f) {
+			__writefile(parrent("root/"+f), "root/"+f, dl("rom/"+f));
 			state("Downloading ROM(GET " + ("rom/"+f) + ")");
 		});
 		
 	}
 	
-	function file2node(fn){
+	function file2node(fn) {
 		var res;
 		if(fn.substr(0,1) != "/")res = "/" + fn;
 		else res = fn
@@ -466,14 +481,14 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 	var firstFree = 0;
 	var handles = [];
 	
-	this.open = function(file){//TODO: check directory
+	this.open = function(file) {//TODO: check directory
 		var node = read(file2node(file));
-		if (node != undefined){
+		if (node != undefined) {
 			var handle = {
 				node: node,
 				position: 0
 			}
-			if(handles[firstFree] == undefined){
+			if(handles[firstFree] == undefined) {
 				handles[firstFree] = handle;
 				firstFree++;
 				return retLua(firstFree-1);
@@ -487,12 +502,12 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 		} 
 	}
 	
-	this.close = function(handle){
+	this.close = function(handle) {
 		handles[handle] = {next: firstFree};
 		firstFree = handle;
 	}
 	
-	this.read = function(handle, count){
+	this.read = function(handle, count) {
 		var readed = handles[handle].node.data.substr(handles[handle].position,count);
 		//console.log("FSREAD: " + readed);
 		if (readed != "" || handles[handle].position == 0) {
@@ -502,14 +517,34 @@ function webfs(fsid, getRomIfEmpty){ //filesystem class
 		}
 	}
 	
-	this.exists = function(file){
+	this.exists = function(file) {
 		var node = file2node(file);
 		console.log(retLua(read(node) != undefined))
 		return retLua(read(node) != undefined);
 	}
 
-	this.seek = function(handle){
+	this.seek = function(handle) {
 		return handles[handle].position
+	}
+
+	this.list = function(path) {
+		var node = read(file2node(path));
+		if (node != undefined && node.type == 1) {
+			var res = []
+			for(i in node.files){
+				res.push(i);
+			}
+			return res
+		}
+	}
+
+	this.isDirectory = function(path) {
+		var node = read(file2node(path));
+		return (node != undefined && node.type == 1)
+	}
+
+	this.getLabel = function() {
+		return "OCWeb filesystem";
 	}
 	
 	this.type = "filesystem";
@@ -593,11 +628,11 @@ component.invoke = function(addr, method,a1,a2,a3,a4,a5,a6){
 	console.log("componentCall:"+addr+"/"+method);
 	try{
 		var d = components[addr][method](a1,a2,a3,a4,a5,a6);
-		if(typeof d == "object") {
-			return retLua(d[0],d[1],d[2],d[3],d[4])
-		} else {
-			return d
-		}
+		//if(typeof d == "object") {
+		//	return retLua(d[0],d[1],d[2],d[3],d[4])
+		//} else {
+			return JSON.stringify(d);
+		//}
 	}catch(e){console.log(e);return retLua(false,"no component("+addr+") or function");}
 }
 
@@ -656,6 +691,10 @@ $(function(){
 	initInternet();
 	
 	//components["webgpu"].set(1,1,"Downloading bios");
+	state("Preparing BIOS envirnoment");
+	L.push(L.execute(dl("vm/JSON.lua")))
+	L.setglobal("JSON");
+
 	state("Downloading BIOS code");
 	bios = dl("vm/bios.lua");
 	//components["webgpu"].set(1,2,"Booting vm");

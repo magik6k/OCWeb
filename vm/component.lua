@@ -4,7 +4,7 @@ local component = {}
 local components = {}
 
 function component.invoke(addr, fun, ...)
-	print("INV:"..addr.." / "..fun)
+	--print("INV:"..addr.." / "..fun)
 	if components[addr] then
 		return components[addr][fun](...)
 	end
@@ -47,6 +47,13 @@ function component.list(filter, exact)
 			return key, set[key]
 		end
 	end})
+end
+
+function component.proxy(addr)
+	if components[addr] then
+		return components[addr]
+	end
+	return nativeComponent.proxy(addr)
 end
 
 function component.add(addr, comp)

@@ -1,3 +1,5 @@
+JSON = JSON[0]
+
 local function checkArg(n, have, ...)
   have = type(have)
   local function check(want, ...)
@@ -80,10 +82,12 @@ local wrappers = {
 	load = function(ld, source, mode, env)
 		return load(ld, source, mode, env or sandbox)
 	end,
-	component = {
+	component = { --Low level components
 		invoke = function(c,m,...)
 			log("CINVOKE["..c.."]"..m)
-			return component:invoke(c,m,...)
+			local res = component:invoke(c,m,...)
+			if not res then return end
+			return JSON:decode(res)
 		end,
 		list = function(filter, exact)
 			log("GETLIST/"..(filter or "nil"));
@@ -110,6 +114,14 @@ local wrappers = {
 				key = next(set, key)
 				if key then
 					return key, set[key]
+				end
+			end})
+		end,
+		proxy = function(addr)
+			return setmetatable({}, {__index = function(c, method)
+				return function(...)
+					log("CINVOKE(via proxy)[" .. addr .. "]" .. method)
+					return component:invoke(addr,method,...)
 				end
 			end})
 		end,
@@ -140,9 +152,11 @@ sandbox = setmetatable(wrappers,{__index = function(t,i)
 	return _G[i]
 end})
 
+wrappers._G = sandbox
+
 function runStage(stageUrl)
 	--component:invoke("webgpu","set",1,3,"Downloading stage "..stageUrl)
-	local kernelCode = component:invoke("webinternet", "request", stageUrl)
+	local kernelCode = JSON:decode(component:invoke("webinternet", "request", stageUrl))
 
 	local kfun,e = load(kernelCode, "="..stageUrl, nil, sandbox)
 
