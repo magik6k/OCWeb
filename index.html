@@ -1,0 +1,522 @@
+<!doctype html>
+<html>
+	<head>
+		<script src="http://code.jquery.com/jquery-2.0.3.min.js" type="text/javascript"></script>
+		<script src="http://kripken.github.io/lua.vm.js/lua.vm.js"></script> <!-- http://kripken.github.io/lua.vm.js -->
+		<meta charset="utf-8">
+		<style>
+		p { margin:0 }
+			body
+			{
+				background-color: rgb(35, 35, 35);
+				color: rgb(165, 180, 180);
+				font-family: Arial, Helvetica, sans-serif;
+			}
+
+			a {
+				color: rgb(150,200,150);
+				cursor:default;
+				text-decoration: none;
+				outline: none;
+			}
+			a:hover {
+				color: rgb(120,120,120);
+			}
+			#top
+			{
+				width: 100%;
+				height:100%;
+			}
+		</style>
+		<title>Virtual OpenComputers</title>
+<script>
+
+var components = {};
+//Utils
+
+
+
+function retLua(a1,a2,a3,a4,a5,a6,a7,a8)
+{
+	if (typeof a1 != "undefined"){L.push(a1);}else{return 0;}
+	//if (typeof a2 != "undefined"){L.push(a2);}else{return a1;}
+	//if (typeof a3 != "undefined"){L.push(a3);}else{return a1;}
+	if (typeof a2 != "undefined"){L.push(a2);}else{return a1;}
+	if (typeof a3 != "undefined"){L.push(a3);}else{return a1;}
+	if (typeof a4 != "undefined"){L.push(a4);}else{return 3;}
+	if (typeof a5 != "undefined"){L.push(a5);}else{return 4;}
+	if (typeof a6 != "undefined"){L.push(a6);}else{return 5;}
+	if (typeof a7 != "undefined"){L.push(a7);}else{return 6;}
+	if (typeof a8 != "undefined"){L.push(a8);}else{return 7;}
+	return 8;	
+}
+
+function log(m1,m2,m3,m4,m5)
+{
+	console.log(m1,m2,m3,m4,m5);
+}
+
+
+function serializeNativeObject(obj){
+	var res = [];
+	for (var key in obj)
+	{
+		if (obj.hasOwnProperty(key)) {
+			res[res.length] = key;
+			res[res.length] = obj[key];
+		}
+	}
+	return res;
+}
+
+//Screen
+
+/*
+isOn():boolean
+Returns whether the screen is currently on.
+turnOn():boolean
+Turns the screen on. Returns true if it was off.
+turnOff():boolean
+Turns off the screen. Returns true if it was on.
+getAspectRatio():number, number
+The aspect ratio of the screen. For multi-block screens this is the number of blocks, horizontal and vertical.
+getKeyboards():table
+*/
+function initScreen()
+{
+	components["webscreen"] = {};
+	components["webscreen"].type = "screen";
+	components["webscreen"].isOn = function(){return true;}
+	components["webscreen"].turnOn = function(){return true;}
+	components["webscreen"].turnOff = function(){return false;}
+	components["webscreen"].getAspectRatio = function(){return [1,1];}
+	components["webscreen"].getKeyboards = function(){return "webkeyboard";}
+}
+
+//GPU
+
+function initGPU()
+{
+	var lines = [];
+	for(var i = 0;i<24;++i) {
+		$("#term").append("<div id='terml"+i+"'>l </div>");
+		lines[i] = "";
+	}
+	
+	var cbg = 0x0;
+	
+	
+	components["webgpu"] = {};
+	components["webgpu"].type = "gpu";
+	components["webgpu"].bind = function(addr) {
+		if(addr!="webscreen"){return [false,"No screen found"];}
+	}
+	components["webgpu"].getScreen = function(){return "webscreen";}
+	components["webgpu"].getBackground = function(){return [cbg,false];}
+	components["webgpu"].setBackground = function(color){cbg = color; return true;}
+
+	components["webgpu"].getForeground = function(){return [cbg,false];}
+	components["webgpu"].setForeground = function(color){cbg = color; return true;}
+
+	components["webgpu"].getResolution = function(){return [80,24];}
+	components["webgpu"].setResolution = function(){console.log("SETRESOLUTION U SAY?"); return true;}
+
+	components["webgpu"].maxDepth = function(){return 8;}
+	
+	
+	components["webgpu"].get = function(x,y) {
+		if(lines[y-1] == "")return " ";
+		return lines[y-1];
+	}
+
+	components["webgpu"].set = function(x, y, value, vertical) {
+		lines[y-1] = value;
+		$("#terml"+(y-1)).html("l "+value);
+		console.log("#terml"+(y-1));
+		return true;
+	}
+
+	components["webgpu"].fill = function(x, y, w, h, char) {
+		if(char==undefined){char=" ";}
+		console.log("FILL: "+x+" "+y+" "+w+" "+h+" "+char)
+		console.log(w)
+		for(var i = 0;i<h;++i) {
+			lines[y+i-1] = char.repeat(w);
+			$("#terml"+(y+i-1)).html("l "+char.repeat(w));
+			console.log("#terml"+(y+i-1));
+		}
+		return true;
+	}
+	
+}
+
+//Internet
+
+var internet = {};
+
+function dl(url,postdata)
+{
+	console.log("getting "+url);
+	var res;
+	//TODO: Own proxy
+	$.ajax({
+		url: /*"http://www.corsproxy.com/" +*/ url,
+		async: false,
+		beforeSend: function( xhr ) {
+			xhr.overrideMimeType( "text/plain; charset=x-user-defined" );
+		}
+	}).done(function( data ) {
+		res = data;
+	});
+	return res;
+}
+
+internet.request = function(url, postData)
+{
+	return retLua(dl(url,postData));
+}
+
+function initInternet()
+{
+	components["webinternet"] = {};
+	components["webinternet"].type = "internet";
+	components["webinternet"].request = internet.request;
+}
+
+
+//==============================================FILESYSTEM==============================================
+
+var romDirectories = [
+];
+
+var romFiles = [
+"init.lua"
+];
+
+var fsVersion = 0;
+
+function webfs(fsid, getRomIfEmpty){ //filesystem class
+	/*
+		1. Storage structure
+		
+		keys:
+		[fsid] - filesystem info
+		[fsid]/root - root directory /
+		[fsid]/root/etc - file like /etc/
+		
+		1.2 Node format:
+		
+		- root
+		- root/somefile
+		- root/somedirectory
+		- root/somedirectory/somefile
+		
+		2. All data is in json format
+		3. Filesystem info
+		
+		{
+			version: [version]
+		}
+		
+		4. Node types:
+			1. Directory
+			2. File
+		
+		5. Directory data
+		
+		{
+			type : 1,
+			files : {
+				"foo": [Node type],
+				"bar": [Node type]
+			}
+		}
+		
+		6. File data
+		
+		{
+			type: 2,
+			data: "This is file data"
+		}
+		
+	*/
+	
+	var fsVersion = 0; 
+	
+	
+	var fsProperties;
+	var fresh = false;
+	
+	function read(property){
+		var prop = localStorage.getItem(property);
+		if(prop == undefined)return;
+		return JSON.parse(prop);
+	}
+	
+	function write(property, obj){
+		console.log("["+fsid+"]Write: "+property);
+		localStorage.setItem(property, JSON.stringify(obj));
+	}
+	
+	function createFilesystem(){
+		write(fsid, {version: fsVersion});
+		write(fsid + "/root", {type: 1, files: {}});
+	}
+	
+	function __putToDirectory(fileNode, fileType, directoryNode){
+		var dir = read(fsid + "/" + directoryNode);
+		if(dir.type != 1)return false;//not a directory
+		if(directoryNode != fileNode.substr(0, directoryNode.length))return false;//wrong file node
+		dir.files[fileNode.substr(directoryNode.length+1)] = fileType;
+		write(fsid + "/" + directoryNode, dir);
+		return true;
+	}
+	
+	function __writefile(parrentNode, fileNode, data){
+		var thatFile = read(fsid + "/" + fileNode);
+		if(thatFile != undefined&&thatFile.type != 1 && __putToDirectory(fileNode, 2, parrentNode)){
+			var file = {type: 2, data: data};
+			write(fsid + "/" + fileNode, file);
+		}else if(thatFile == undefined&& __putToDirectory(fileNode, 2, parrentNode)){
+			var file = {type: 2, data: data};
+			write(fsid + "/" + fileNode, file);
+		}
+		
+	}
+	
+	function __makeDirectory(parrentNode, directoryNode){
+		var thatFile = read(fsid + "/" + directoryNode);
+		if(thatFile != undefined&&thatFile.type != 1 && __putToDirectory(directoryNode, 1, parrentNode)){
+			var file = {type: 1, files: {}};
+			write(fsid + "/" + directoryNode, dir);
+		}	
+	}
+	
+	function openFilesystem(){
+		fsProperties = read(fsid);
+		if(fsProperties == undefined)
+		{
+			console.log("["+fsid+"] Do not exist, creating");
+			createFilesystem()
+			fsProperties = read(fsid);
+			fresh = true;
+		}
+		if(fsProperties.version != fsVersion)
+		{
+			console.log("["+fsid+"] Is outdated("+fsProperties.version+"->"+fsVersion+"), recreating");
+			localStorage.clear();
+			createFilesystem()
+			fsProperties = read(fsid);
+			fresh = true;
+		}		
+	}
+	
+	function downloadRom(){
+		console.log("Downloading ROM");
+		romFiles.forEach(function(f){
+			__writefile("root", "root/"+f, dl("rom/"+f));
+		});
+		
+	}
+	
+	function file2node(fn){
+		var res;
+		if(fn.substr(0,1) != "/")res = "/" + fn;
+		else res = fn
+		res = fsid + "/root" + res;
+		if(res.substr(res.length-1,res.length) == "/")
+			res = res.substr(0, res.length-1);
+		console.log("["+fsid+"]Node: "+res)
+		return res;
+	}	
+	
+	var firstFree = 0;
+	var handles = [];
+	
+	this.open = function(file){//TODO: check directory
+		var node = read(file2node(file));
+		if (node != undefined){
+			var handle = {
+				node: node,
+				position: 0
+			}
+			if(handles[firstFree] == undefined){
+				handles[firstFree] = handle;
+				firstFree++;
+				return retLua(firstFree-1);
+			}else{
+				var nextFree = handles[firstFree].next;
+				handles[firstFree] = handle;
+				var hid = firstFree;
+				firstFree = nextFree;
+				return retLua(hid);
+			}
+		} 
+	}
+	
+	this.close = function(handle){
+		handles[handle] = {next: firstFree};
+		firstFree = handle;
+	}
+	
+	this.read = function(handle, count){
+		var readed = handles[handle].node.data.substr(handles[handle].position,count);
+		console.log("FSREAD: " + readed);
+		if (readed != "" || handles[handle].position == 0) {
+			console.log("FSREAD RET!");
+			handles[handle].position += count;
+			return readed;
+		}
+	}
+	
+	this.exists = function(file){
+		var node = file2node(file);
+		console.log(retLua(read(node) != undefined))
+		return retLua(read(node) != undefined);
+	}
+
+	this.seek = function(handle){
+		return handles[handle].position
+	}
+	
+	this.type = "filesystem";
+	
+	console.log("["+fsid+"] init");
+	openFilesystem();
+	if(fresh && getRomIfEmpty)downloadRom();	
+}
+
+components["webfs1"] = new webfs("fs1", true);
+
+//============================================FILESYSTEM END============================================
+
+//Computer System
+
+var computer = {};
+
+computer.getBootAddress = function(){
+	return retLua("webfs1");
+}
+
+computer.setBootAddress = function(){}
+
+computer.isRobot = function(){return retLua(false);}
+computer.address = function(){return retLua("webcomputer");}
+computer.tmpAddress = function(){return retLua("/tmp/temp");}
+computer.freeMemory = function(){return retLua(1024);}
+computer.totalMemory = function(){return retLua(1024);}
+computer.uptime = function(){return retLua(1);}
+computer.energy = function(){return retLua(128);}
+computer.maxEnergy = function(){return retLua(128);}
+computer.shutdown = function(){throw retLua("TurnOff");}
+computer.beep = function(){console.log("BEEEEEEEEEEEEP!")}
+
+function loadComputer(){
+	L.createtable( 0, 12);
+
+	L.pushjs(computer.getBootAddress);
+    L.setfield( -2, "getBootAddress"); 
+    
+    L.pushjs(computer.getBootAddress);
+    L.setfield( -2, "setBootAddress"); 
+    
+    L.pushjs(computer.isRobot);
+    L.setfield( -2, "isRobot"); 
+    
+    L.pushjs(computer.address);
+    L.setfield( -2, "address"); 
+    
+    L.pushjs(computer.tmpAddress);
+    L.setfield( -2, "tmpAddress"); 
+    
+    L.pushjs(computer.freeMemory);
+    L.setfield( -2, "freeMemory"); 
+    
+    L.pushjs(computer.totalMemory);
+    L.setfield( -2, "totalMemory"); 
+    
+    L.pushjs(computer.uptime);
+    L.setfield( -2, "uptime"); 
+    
+    L.pushjs(computer.energy);
+    L.setfield( -2, "energy"); 
+    
+    L.pushjs(computer.maxEnergy);
+    L.setfield( -2, "maxEnergy"); 
+    
+    L.pushjs(computer.shutdown);
+    L.setfield( -2, "shutdown"); 
+
+    L.pushjs(computer.beep);
+    L.setfield( -2, "beep"); 
+    
+	L.setglobal("computer");
+}
+
+//Component system
+
+var component = {};
+component.invoke = function(addr, method,a1,a2,a3,a4,a5,a6){
+	console.log("componentCall:"+addr+"/"+method);
+	try{
+		var d = components[addr][method](a1,a2,a3,a4,a5,a6);
+		if(typeof d == "object") {
+			return retLua(d[0],d[1],d[2],d[3],d[4])
+		} else {
+			return d
+		}
+	}catch(e){console.log(e);return retLua(false,"no component("+addr+") or function");}
+}
+
+component.list = function(){
+	var tab = {};
+	for (var key in components) {
+		if (components.hasOwnProperty(key)) {
+			tab[key] = components[key].type
+		}
+	}
+	return serializeNativeObject(tab);
+}
+
+
+function loadComponent(){
+	L.createtable( 0, 4);
+
+    L.pushjs(component.invoke);
+    L.setfield( -2, "invoke");  
+
+    L.pushjs(component.list);
+    L.setfield( -2, "list");
+
+    L.pushstring( "row->ip");
+    L.setfield( -2, "ip");
+
+    L.pushstring( "row->custom");
+    L.setfield( -2, "custom");
+	L.setglobal("component");
+}
+var bios;
+
+$(function(){
+	L.openlibs();
+	
+	initScreen();
+	initGPU();
+	
+	loadComponent();
+	loadComputer();
+	
+	initInternet();
+	
+	components["webgpu"].set(1,1,"Downloading bios");
+	bios = dl("vm/bios.lua");
+	components["webgpu"].set(1,2,"Booting vm");
+	//console.log(bios);
+	console.log(L.execute(bios));
+});
+</script>
+	</head>
+	<body>
+		<div id = "term"></div>
+	</body>
+</html>
